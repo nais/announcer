@@ -10,6 +10,7 @@ use redis::RedisResult;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::io::{Error, ErrorKind};
+use structured_logger::{async_json::new_writer, Builder};
 
 #[derive(Debug, Deserialize)]
 struct Item {
@@ -41,7 +42,16 @@ struct SlackBlob {
 
 #[tokio::main]
 async fn main() {
-    println!("Hello, world!");
+    Builder::with_level("info")
+        .with_target_writer("*", new_writer(tokio::io::stdout()))
+        .init();
+
+    info!("Good morning, Nais!");
+
+    if std::env::var("SLACK_TOKEN").is_err() {
+        error!("Missing the SLACK_TOKEN env");
+        return;
+    }
 
     let app = Router::new().route("/reconcile", post(reconcile));
 
@@ -72,8 +82,25 @@ async fn handle_feed(xml: &str) {
         doc.channel.title
     );
 
-    let client = redis::Client::open("redis://127.0.0.1/").unwrap();
-    let mut con = client.get_connection().unwrap(); // TODO: Denne kan feile!
+    let uri = std::env::var("REDIS_URI_RSS").unwrap();
+    let username = std::env::var("REDIS_USERNAME_RSS").unwrap();
+    let password = std::env::var("REDIS_PASSWORD_RSS").unwrap();
+
+    let client = match redis::Client::open(format!("rediss://{}:{}@{}", username, password, uri)) {
+        Ok(c) => c,
+        Err(err) => {
+            error!("Connecting to Redis failed: {}", err);
+            return;
+        }
+    };
+
+    let mut con = match client.get_connection() {
+        Ok(c) => c,
+        Err(err) => {
+            error!("Opening connection failed: {}", err);
+            return;
+        }
+    };
 
     for item in doc.channel.items {
         let key = item.link.split("#").collect::<Vec<&str>>()[1].to_owned();
@@ -103,7 +130,6 @@ async fn handle_feed(xml: &str) {
             }
             Ok(Some(raw)) => {
                 let mut output = serde_json::from_str::<SlackBlob>(&raw).unwrap();
-                println!("Hash: {} ({})", output.hash, output.timestamp);
                 if output.hash != hash {
                     info!("Post has changed, updating the Slack message");
                     match update_message(item, &output.timestamp).await {
@@ -145,7 +171,6 @@ struct SlackResponse {
 }
 
 async fn post_message(post: Item) -> Result<SlackResponse, Error> {
-    println!("Posting to Slack");
     let content = format_slack_post(post.content);
     let payload = SlackMessage {
         channel: "#test-rss-announcement".to_string(),
@@ -165,7 +190,6 @@ fn format_slack_post(org: String) -> String {
 }
 
 async fn update_message(post: Item, timestamp: &String) -> Result<SlackResponse, Error> {
-    println!("Updating message in Slack");
     let content = format_slack_post(post.content);
     let payload = SlackMessage {
         channel: "C082AH36ZTL".to_string(),
