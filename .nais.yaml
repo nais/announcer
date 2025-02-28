@@ -11,7 +11,7 @@ spec:
         - host: slack.com
   env:
     - name: SLACK_CHANNEL_ID
-      value: "C082AH36ZTL"
+      value: "C01DE3M9YBV"
   image: {{image}}
   ingresses:
     - https://announcements.external.prod-gcp.nav.cloud.nais.io
