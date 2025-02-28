@@ -8,6 +8,7 @@ spec:
     outbound:
       external:
         - host: nais.io
+        - host: slack.com
   image: {{image}}
   ingresses:
     - https://announcements.external.prod-gcp.nav.cloud.nais.io
