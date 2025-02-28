@@ -6,6 +6,8 @@ metadata:
 spec:
   image: {{image}}
   port: 8080
+  envFrom:
+    - secret: announcements
   valkey:
     - access: readwrite
       instance: rss
