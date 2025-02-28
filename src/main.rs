@@ -104,7 +104,10 @@ async fn handle_feed(xml: &str) {
 
     for item in doc.channel.items {
         let key = item.link.split("#").collect::<Vec<&str>>()[1].to_owned();
-        info!("Handling {} ({}) - {}", item.title, item.pub_date, key);
+        info!(
+            "Handling '{}' (date: {}, key: {})",
+            item.title, item.pub_date, key
+        );
 
         let hash = format!(
             "{:x}",
@@ -134,7 +137,7 @@ async fn handle_feed(xml: &str) {
             Ok(Some(raw)) => {
                 let mut output = serde_json::from_str::<SlackBlob>(&raw).unwrap();
                 if output.hash != hash {
-                    info!("Post has changed, updating the Slack message");
+                    info!("Post has changed, updating Slack");
                     match update_message(item, &output.timestamp).await {
                         Ok(_) => {
                             output.hash = hash;
@@ -143,13 +146,15 @@ async fn handle_feed(xml: &str) {
 
                             match output {
                                 Ok(_) => {
-                                    info!("Update Slack, and Redis");
+                                    info!("Finished updating Slack, and Redis");
                                 }
                                 Err(err) => error!("Failed saving to Redis: {}", err),
                             }
                         }
                         Err(err) => error!("Failed posting to Slack: {}", err),
                     };
+                } else {
+                    info!("No changes here");
                 }
             }
             Err(err) => error!("Failed getting {} from Redis: {}", key, err),
