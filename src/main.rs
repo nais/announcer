@@ -82,11 +82,13 @@ async fn handle_feed(xml: &str) {
         doc.channel.title
     );
 
-    let uri = std::env::var("REDIS_URI_RSS").unwrap();
+    let host = std::env::var("REDIS_HOST_RSS").unwrap();
     let username = std::env::var("REDIS_USERNAME_RSS").unwrap();
     let password = std::env::var("REDIS_PASSWORD_RSS").unwrap();
+    let port = std::env::var("REDIS_PORT_RSS").unwrap();
+    let uri = format!("rediss://{username}:{password}@{host}:{port}");
 
-    let client = match redis::Client::open(format!("rediss://{}:{}@{}", username, password, uri)) {
+    let client = match redis::Client::open(uri) {
         Ok(c) => c,
         Err(err) => {
             error!("Connecting to Redis failed: {}", err);
