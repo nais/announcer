@@ -203,26 +203,21 @@ async fn update_message(post: Item, timestamp: &String) -> Result<SlackResponse,
 async fn post_to_slack(method: String, payload: SlackMessage) -> Result<SlackResponse, Error> {
     let slack_token = std::env::var("SLACK_TOKEN").unwrap();
 
-    match reqwest::Client::new()
+    let response = reqwest::Client::new()
         .post(format!("https://slack.com/api/{}", method))
         .header("Authorization", format!("Bearer {}", slack_token))
         .header("Content-Type", "application/json")
         .json(&payload)
         .send()
         .await
-    {
-        Ok(resp) => {
-            match resp.json::<SlackResponse>().await {
-                Ok(sr) => {
-                    if sr.ok {
-                        return Ok(sr);
-                    } else {
-                        return Err(Error::new(ErrorKind::Other, sr.error));
-                    }
-                }
-                Err(err) => return Err(Error::new(ErrorKind::Other, err.to_string())),
-            };
-        }
-        Err(err) => return Err(Error::new(ErrorKind::Other, err.to_string())),
-    };
+        .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?
+        .json::<SlackResponse>()
+        .await
+        .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+
+    if response.ok {
+        Ok(response)
+    } else {
+        Err(Error::new(ErrorKind::Other, response.error))
+    }
 }
