@@ -4,6 +4,10 @@ metadata:
   name: announcements
   namespace: nais
 spec:
+  accessPolicy:
+    outbound:
+      external:
+        - host: nais.io
   image: {{image}}
   ingresses:
     - https://announcements.external.prod-gcp.nav.cloud.nais.io
