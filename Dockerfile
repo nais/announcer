@@ -1,8 +1,8 @@
 ARG PACKAGE=announcements
 
-FROM cgr.dev/chainguard/rust as build
+FROM cgr.dev/chainguard/rust AS build
 WORKDIR /app
-COPY cargo.toml Cargo.lock ./
+COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 RUN cargo build --release
 
