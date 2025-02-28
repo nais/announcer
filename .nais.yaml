@@ -5,7 +5,7 @@ metadata:
   namespace: nais
 spec:
   image: {{image}}
-  ingress:
+  ingresses:
     - https://announcements.external.prod-gcp.nav.cloud.nais.io
   port: 8080
   envFrom:
