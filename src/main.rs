@@ -206,7 +206,7 @@ async fn post_to_slack(method: String, payload: SlackMessage) -> Result<SlackRes
     let response = reqwest::Client::new()
         .post(format!("https://slack.com/api/{}", method))
         .header("Authorization", format!("Bearer {}", slack_token))
-        .header("Content-Type", "application/json")
+        .header("Content-Type", "application/json; charset=utf-8")
         .json(&payload)
         .send()
         .await
