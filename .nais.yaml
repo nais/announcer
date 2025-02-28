@@ -1,0 +1,11 @@
+apiVersion: nais.io/v1alpha1
+kind: Application
+metadata:
+  name: announcements
+  namespace: nais
+spec:
+  image: {{image}}
+  port: 8080
+  valkey:
+    - access: readwrite
+      instance: rss
