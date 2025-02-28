@@ -48,10 +48,8 @@ async fn main() {
 
     info!("Good morning, Nais!");
 
-    if std::env::var("SLACK_TOKEN").is_err() {
-        error!("Missing the SLACK_TOKEN env");
-        return;
-    }
+    std::env::var("SLACK_TOKEN").expect("Missing SLACK_TOKEN env");
+    std::env::var("SLACK_CHANNEL_ID").expect("Missing SLACK_CHANNEL_ID env");
 
     let app = Router::new().route("/reconcile", post(reconcile));
 
@@ -175,7 +173,7 @@ struct SlackResponse {
 async fn post_message(post: Item) -> Result<SlackResponse, Error> {
     let content = format_slack_post(post.content);
     let payload = SlackMessage {
-        channel: "#test-rss-announcement".to_string(),
+        channel: std::env::var("SLACK_CHANNEL_ID").unwrap(),
         ts: "".to_string(),
         text: format!("<{}|{}>\n{}", post.link, post.title, content),
     };
@@ -194,7 +192,7 @@ fn format_slack_post(org: String) -> String {
 async fn update_message(post: Item, timestamp: &String) -> Result<SlackResponse, Error> {
     let content = format_slack_post(post.content);
     let payload = SlackMessage {
-        channel: "C082AH36ZTL".to_string(),
+        channel: std::env::var("SLACK_CHANNEL_ID").unwrap(),
         ts: timestamp.to_string(),
         text: format!("<{}|{}>\n{}", post.link, post.title, content),
     };

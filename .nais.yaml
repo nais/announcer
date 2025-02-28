@@ -9,6 +9,9 @@ spec:
       external:
         - host: nais.io
         - host: slack.com
+  env:
+    - name: SLACK_CHANNEL_ID
+      value: "C082AH36ZTL"
   image: {{image}}
   ingresses:
     - https://announcements.external.prod-gcp.nav.cloud.nais.io
