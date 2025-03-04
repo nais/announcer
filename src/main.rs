@@ -54,6 +54,13 @@ async fn main() {
     std::env::var("SLACK_TOKEN").expect("Missing SLACK_TOKEN env");
     std::env::var("SLACK_CHANNEL_ID").expect("Missing SLACK_CHANNEL_ID env");
 
+    if std::env::var("NAIS_CLUSTER_NAME").is_ok() {
+        std::env::var("REDIS_HOST_RSS").expect("Missing REDIS_HOST_RSS env");
+        std::env::var("REDIS_USERNAME_RSS").expect("Missing REDIS_USERNAME_RSS env");
+        std::env::var("REDIS_PASSWORD_RSS").expect("Missing REDIS_PASSWORD_RSS env");
+        std::env::var("REDIS_PORT_RSS").expect("Missing REDIS_PORT_RSS env");
+    }
+
     let app = Router::new().route("/reconcile", post(reconcile)).route(
         "/",
         get(|| async { "Hello, check out https://nais.io/log/!" }),
@@ -86,11 +93,17 @@ async fn handle_feed(xml: &str) {
         doc.channel.title
     );
 
-    let host = std::env::var("REDIS_HOST_RSS").unwrap();
-    let username = std::env::var("REDIS_USERNAME_RSS").unwrap();
-    let password = std::env::var("REDIS_PASSWORD_RSS").unwrap();
-    let port = std::env::var("REDIS_PORT_RSS").unwrap();
-    let uri = format!("rediss://{username}:{password}@{host}:{port}");
+    let uri: String;
+
+    if std::env::var("NAIS_CLUSTER_NAME").is_ok() {
+        let host = std::env::var("REDIS_HOST_RSS").unwrap();
+        let username = std::env::var("REDIS_USERNAME_RSS").unwrap();
+        let password = std::env::var("REDIS_PASSWORD_RSS").unwrap();
+        let port = std::env::var("REDIS_PORT_RSS").unwrap();
+        uri = format!("rediss://{username}:{password}@{host}:{port}");
+    } else {
+        uri = "redis://localhost:6379".to_string();
+    }
 
     let client = match redis::Client::open(uri) {
         Ok(c) => c,
