@@ -12,16 +12,15 @@ spec:
   env:
     - name: SLACK_CHANNEL_ID
       value: "C01DE3M9YBV"
+  envFrom:
+    - secret: announcements
   image: {{image}}
   ingresses:
     - https://announcements.external.prod-gcp.nav.cloud.nais.io
-  port: 8080
   observability:
     logging:
       destinations:
         - id: loki
-  envFrom:
-    - secret: announcements
   valkey:
     - access: readwrite
       instance: rss
