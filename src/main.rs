@@ -3,7 +3,10 @@ extern crate lazy_static;
 extern crate redis;
 
 use crate::redis::Commands;
-use axum::{routing::post, Router};
+use axum::{
+    routing::{get, post},
+    Router,
+};
 use log::{error, info};
 use md5;
 use redis::RedisResult;
@@ -51,7 +54,10 @@ async fn main() {
     std::env::var("SLACK_TOKEN").expect("Missing SLACK_TOKEN env");
     std::env::var("SLACK_CHANNEL_ID").expect("Missing SLACK_CHANNEL_ID env");
 
-    let app = Router::new().route("/reconcile", post(reconcile));
+    let app = Router::new().route("/reconcile", post(reconcile)).route(
+        "/",
+        get(|| async { "Hello, check out https://nais.io/log/!" }),
+    );
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
     axum::serve(listener, app).await.unwrap();
