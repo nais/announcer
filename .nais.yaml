@@ -16,6 +16,10 @@ spec:
   ingresses:
     - https://announcements.external.prod-gcp.nav.cloud.nais.io
   port: 8080
+  observability:
+    logging:
+      destinations:
+        - id: loki
   envFrom:
     - secret: announcements
   valkey:
