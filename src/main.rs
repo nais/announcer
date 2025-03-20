@@ -210,7 +210,7 @@ async fn post_message(post: Item) -> Result<SlackResponse, Error> {
 
 fn format_slack_post(org: String) -> String {
     lazy_static! {
-        static ref RE: Regex = Regex::new(r"\[(.*)\]\((.*)\)").unwrap();
+        static ref RE: Regex = Regex::new(r"\[(.*?)\]\((.*?)\)").unwrap();
     }
 
     RE.replace_all(&org, "<$2|$1>").to_string()
