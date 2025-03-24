@@ -1,4 +1,4 @@
-# Nais Announcements
+# Nais Announcer
 
 En enkel Rust-app som henter siste publiserte annonseringer fra Nais.io og poster de til Slack.
 Ved å hashe tittel og innhold vil den også se om det har blitt gjort endringer, og oppdatere Slack ved behov.

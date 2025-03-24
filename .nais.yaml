@@ -1,7 +1,7 @@
 apiVersion: nais.io/v1alpha1
 kind: Application
 metadata:
-  name: announcements
+  name: announcer
   namespace: nais
 spec:
   accessPolicy:
@@ -13,10 +13,10 @@ spec:
     - name: SLACK_CHANNEL_ID
       value: "C01DE3M9YBV"
   envFrom:
-    - secret: announcements
+    - secret: announcer
   image: {{image}}
   ingresses:
-    - https://announcements.external.prod-gcp.nav.cloud.nais.io
+    - https://announcer.external.prod-gcp.nav.cloud.nais.io
   observability:
     logging:
       destinations:

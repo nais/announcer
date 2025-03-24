@@ -5,5 +5,5 @@ COPY src ./src
 RUN cargo build --release
 
 FROM cgr.dev/chainguard/glibc-dynamic
-COPY --from=build --chown=nonroot:nonroot /app/target/release/announcements /usr/local/bin/announcements
-CMD ["/usr/local/bin/announcements"]
+COPY --from=build --chown=nonroot:nonroot /app/target/release/announcer /usr/local/bin/announcer
+CMD ["/usr/local/bin/announcer"]
