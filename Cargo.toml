@@ -4,12 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-axum = "0.8.1"
+axum = "0.8.3"
 chrono = { version = "0.4.40", features = ["serde"] }
 lazy_static = "1.5.0"
-log = "0.4.26"
+log = "0.4.27"
 md5 = "0.7.0"
-quick-xml = { version = "0.37.2", features = ["serde", "serialize"] }
+quick-xml = { version = "0.37.3", features = ["serde", "serialize"] }
 redis = { version = "0.29.2", features = ["tls-rustls"] }
 regex = "1.11.1"
 reqwest = { version = "0.12.15", features = ["charset", "http2", "json", "macos-system-configuration", "rustls-tls"], default-features = false }
