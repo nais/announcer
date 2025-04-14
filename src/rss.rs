@@ -3,7 +3,7 @@ use crate::slack;
 use log::{error, info};
 use md5;
 use redis::RedisResult;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
 pub struct Post {
@@ -25,6 +25,12 @@ struct Feed {
 #[derive(Deserialize)]
 struct RSS {
     feed: Feed,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct Archive {
+    pub hash: String,
+    pub timestamp: String,
 }
 
 pub async fn handle_feed(xml: &str) {
@@ -66,7 +72,7 @@ pub async fn handle_feed(xml: &str) {
             item.title, item.pub_date, key
         );
 
-        let hash = format!(
+        let hashed_post = format!(
             "{:x}",
             md5::compute(format!("{}-{}", item.title, item.content))
         );
@@ -75,15 +81,15 @@ pub async fn handle_feed(xml: &str) {
             Ok(None) => {
                 info!("New post, pushing to Slack");
                 match slack::post_message(item).await {
-                    Ok(sr) => {
-                        let sb = slack::SlackBlob {
-                            hash,
-                            timestamp: sr.ts,
+                    Ok(response) => {
+                        let archive = Archive {
+                            hash: hashed_post,
+                            timestamp: response.ts,
                         };
-                        let raw = serde_json::to_string(&sb).unwrap();
-                        let output: RedisResult<()> = con.set(key, raw);
+                        let raw = serde_json::to_string(&archive).unwrap();
+                        let result: RedisResult<()> = con.set(key, raw);
 
-                        match output {
+                        match result {
                             Ok(_) => info!("Posted to Slack, and saved to Redis"),
                             Err(err) => error!("Failed saving to Redis: {}", err),
                         }
@@ -92,19 +98,17 @@ pub async fn handle_feed(xml: &str) {
                 };
             }
             Ok(Some(raw)) => {
-                let mut output = serde_json::from_str::<slack::SlackBlob>(&raw).unwrap();
-                if output.hash != hash {
+                let mut archive = serde_json::from_str::<Archive>(&raw).unwrap();
+                if archive.hash != hashed_post {
                     info!("Post has changed, updating Slack");
-                    match slack::update_message(item, &output.timestamp).await {
+                    match slack::update_message(item, &archive.timestamp).await {
                         Ok(_) => {
-                            output.hash = hash;
-                            let raw = serde_json::to_string(&output).unwrap();
-                            let output: RedisResult<()> = con.set(key, raw);
+                            archive.hash = hashed_post;
+                            let raw = serde_json::to_string(&archive).unwrap();
+                            let result: RedisResult<()> = con.set(key, raw);
 
-                            match output {
-                                Ok(_) => {
-                                    info!("Finished updating Slack, and Redis");
-                                }
+                            match result {
+                                Ok(_) => info!("Finished updating Slack, and Redis"),
                                 Err(err) => error!("Failed saving to Redis: {}", err),
                             }
                         }

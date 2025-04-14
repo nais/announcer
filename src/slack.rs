@@ -4,25 +4,19 @@ use serde::{Deserialize, Serialize};
 use std::io::{Error, ErrorKind};
 
 #[derive(Serialize)]
-struct SlackMessage {
+struct Message {
     channel: String,
     ts: String,
     text: String,
 }
 
 #[derive(Deserialize)]
-pub struct SlackResponse {
+pub struct Response {
     ok: bool,
     #[serde(default)]
     pub ts: String,
     #[serde(default)]
     error: String,
-}
-
-#[derive(Deserialize, Serialize)]
-pub struct SlackBlob {
-    pub hash: String,
-    pub timestamp: String,
 }
 
 fn format_slack_post(org: String) -> String {
@@ -33,9 +27,9 @@ fn format_slack_post(org: String) -> String {
     RE.replace_all(&org, "<$2|$1>").to_string()
 }
 
-pub async fn post_message(post: Post) -> Result<SlackResponse, Error> {
+pub async fn post_message(post: Post) -> Result<Response, Error> {
     let content = format_slack_post(post.content);
-    let payload = SlackMessage {
+    let payload = Message {
         channel: std::env::var("SLACK_CHANNEL_ID").unwrap(),
         ts: "".to_string(),
         text: format!("<{}|{}>\n{}", post.link, post.title, content),
@@ -44,9 +38,9 @@ pub async fn post_message(post: Post) -> Result<SlackResponse, Error> {
     post_to_slack("chat.postMessage".to_string(), payload).await
 }
 
-pub async fn update_message(post: Post, timestamp: &String) -> Result<SlackResponse, Error> {
+pub async fn update_message(post: Post, timestamp: &String) -> Result<Response, Error> {
     let content = format_slack_post(post.content);
-    let payload = SlackMessage {
+    let payload = Message {
         channel: std::env::var("SLACK_CHANNEL_ID").unwrap(),
         ts: timestamp.to_string(),
         text: format!("<{}|{}>\n{}", post.link, post.title, content),
@@ -55,7 +49,7 @@ pub async fn update_message(post: Post, timestamp: &String) -> Result<SlackRespo
     post_to_slack("chat.update".to_string(), payload).await
 }
 
-async fn post_to_slack(method: String, payload: SlackMessage) -> Result<SlackResponse, Error> {
+async fn post_to_slack(method: String, payload: Message) -> Result<Response, Error> {
     let slack_token = std::env::var("SLACK_TOKEN").unwrap();
 
     let response = reqwest::Client::new()
@@ -66,7 +60,7 @@ async fn post_to_slack(method: String, payload: SlackMessage) -> Result<SlackRes
         .send()
         .await
         .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?
-        .json::<SlackResponse>()
+        .json::<Response>()
         .await
         .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
 
