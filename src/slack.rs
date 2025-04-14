@@ -1,8 +1,7 @@
+use crate::rss::Post;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::io::{Error, ErrorKind};
-
-use crate::rss;
 
 #[derive(Serialize)]
 struct SlackMessage {
@@ -34,7 +33,7 @@ fn format_slack_post(org: String) -> String {
     RE.replace_all(&org, "<$2|$1>").to_string()
 }
 
-pub async fn post_message(post: Item) -> Result<SlackResponse, Error> {
+pub async fn post_message(post: Post) -> Result<SlackResponse, Error> {
     let content = format_slack_post(post.content);
     let payload = SlackMessage {
         channel: std::env::var("SLACK_CHANNEL_ID").unwrap(),
@@ -45,7 +44,7 @@ pub async fn post_message(post: Item) -> Result<SlackResponse, Error> {
     post_to_slack("chat.postMessage".to_string(), payload).await
 }
 
-pub async fn update_message(post: Item, timestamp: &String) -> Result<SlackResponse, Error> {
+pub async fn update_message(post: Post, timestamp: &String) -> Result<SlackResponse, Error> {
     let content = format_slack_post(post.content);
     let payload = SlackMessage {
         channel: std::env::var("SLACK_CHANNEL_ID").unwrap(),

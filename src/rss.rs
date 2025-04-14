@@ -6,13 +6,13 @@ use redis::RedisResult;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
-struct Post {
-    title: String,
-    link: String,
+pub struct Post {
+    pub title: String,
+    pub link: String,
     #[serde(rename = "pubDate")]
     pub_date: String,
     #[serde(rename = "encoded")]
-    content: String,
+    pub content: String,
 }
 
 #[derive(Deserialize)]
