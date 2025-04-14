@@ -2,7 +2,7 @@
 extern crate lazy_static;
 extern crate redis;
 
-mod r;
+mod rss;
 mod slack;
 
 use axum::{
@@ -10,7 +10,6 @@ use axum::{
     Router,
 };
 use log::{error, info};
-use r as rrs;
 use structured_logger::{async_json::new_writer, Builder};
 
 #[tokio::main]
@@ -46,7 +45,7 @@ async fn reconcile() {
         Ok(resp) => {
             if resp.status().is_success() {
                 let body = resp.text().await;
-                rrs::handle_feed(&body.unwrap()).await;
+                rss::handle_feed(&body.unwrap()).await;
             } else {
                 error!("Got a response, but no XML");
             }
