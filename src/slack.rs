@@ -1,7 +1,10 @@
 use crate::rss::Post;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::io::{Error, ErrorKind};
+use std::{
+    io::{Error, ErrorKind},
+    sync::OnceLock,
+};
 
 #[derive(Serialize)]
 struct Message {
@@ -20,11 +23,13 @@ pub struct Response {
 }
 
 fn format_slack_post(org: String) -> String {
-    lazy_static! {
-        static ref RE: Regex = Regex::new(r"\[(.*?)\]\((.*?)\)").unwrap();
-    }
-
-    RE.replace_all(&org, "<$2|$1>").to_string()
+    static RE_PATTERN: OnceLock<Regex> = OnceLock::new();
+    RE_PATTERN
+        .get_or_init(|| {
+            Regex::new(r"\[(.*?)\]\((.*?)\)").expect("Hard-coded regex pattern should compile")
+        })
+        .replace_all(&org, "<$2|$1>")
+        .to_string()
 }
 
 pub async fn post_message(post: Post) -> Result<Response, Error> {

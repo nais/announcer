@@ -1,5 +1,3 @@
-#[macro_use]
-extern crate lazy_static;
 extern crate redis;
 
 mod rss;
@@ -43,12 +41,12 @@ async fn reconcile() {
     info!("Time to check the log");
     match reqwest::get("https://nais.io/log/rss.xml").await {
         Ok(resp) => {
-            if resp.status().is_success() {
-                let body = resp.text().await;
-                rss::handle_feed(&body.unwrap()).await;
-            } else {
+            if !resp.status().is_success() {
                 error!("Got a response, but no XML");
+                return;
             }
+            let body = resp.text().await;
+            rss::handle_feed(&body.unwrap()).await;
         }
         Err(e) => error!("Failed getting the feed: {e}"),
     }
