@@ -21,6 +21,12 @@ spec:
     logging:
       destinations:
         - id: loki
+  resources:
+    limits:
+      memory: 32Mi
+    requests:
+      cpu: 10m
+      memory: 32Mi
   valkey:
     - access: readwrite
       instance: rss
