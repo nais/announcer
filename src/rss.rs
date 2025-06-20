@@ -22,7 +22,7 @@ struct Feed {
 }
 
 #[derive(Deserialize)]
-struct RSS {
+struct Rss {
     feed: Feed,
 }
 
@@ -33,25 +33,33 @@ pub struct Archive {
 }
 
 pub async fn handle_feed(xml: &str) {
-    let doc: RSS = quick_xml::de::from_str(xml).unwrap();
+    let doc: Rss = match quick_xml::de::from_str(xml) {
+        Ok(d) => d,
+        Err(e) => {
+            error!("Parsing XML failed: {e}");
+            return;
+        }
+    };
     info!("Found {} posts in {}", doc.feed.posts.len(), doc.feed.title);
 
-    let uri: String;
-
-    if std::env::var("NAIS_CLUSTER_NAME").is_ok() {
-        let host = std::env::var("REDIS_HOST_RSS").unwrap();
-        let username = std::env::var("REDIS_USERNAME_RSS").unwrap();
-        let password = std::env::var("REDIS_PASSWORD_RSS").unwrap();
-        let port = std::env::var("REDIS_PORT_RSS").unwrap();
-        uri = format!("rediss://{username}:{password}@{host}:{port}");
+    let uri: String = if std::env::var("NAIS_CLUSTER_NAME").is_ok() {
+        let host = std::env::var("REDIS_HOST_RSS")
+            .expect("Nais manifest should request a Redis instance w/this env prefix");
+        let username = std::env::var("REDIS_USERNAME_RSS")
+            .expect("Nais manifest should request a Redis instance w/this env prefix");
+        let password = std::env::var("REDIS_PASSWORD_RSS")
+            .expect("Nais manifest should request a Redis instance w/this env prefix");
+        let port = std::env::var("REDIS_PORT_RSS")
+            .expect("Nais manifest should request a Redis instance w/this env prefix");
+        format!("rediss://{username}:{password}@{host}:{port}")
     } else {
-        uri = "redis://localhost:6379".to_string();
-    }
+        "redis://localhost:6379".to_string()
+    };
 
     let client = match redis::Client::open(uri) {
         Ok(c) => c,
         Err(err) => {
-            error!("Connecting to Redis failed: {}", err);
+            error!("Connecting to Redis failed: {err}");
             return;
         }
     };
@@ -59,16 +67,16 @@ pub async fn handle_feed(xml: &str) {
     let mut con = match client.get_connection() {
         Ok(c) => c,
         Err(err) => {
-            error!("Opening connection failed: {}", err);
+            error!("Opening connection failed: {err}");
             return;
         }
     };
 
     for item in doc.feed.posts {
-        let key = item.link.split("#").collect::<Vec<&str>>()[1].to_owned();
+        let key = item.link.split('#').collect::<Vec<&str>>()[1].to_owned();
         info!(
-            "Handling '{}' (date: {}, key: {})",
-            item.title, item.pub_date, key
+            "Handling '{}' (date: {}, key: {key})",
+            item.title, item.pub_date
         );
 
         let hashed_post = format!(
@@ -89,35 +97,36 @@ pub async fn handle_feed(xml: &str) {
                         let result: RedisResult<()> = con.set(key, raw);
 
                         match result {
-                            Ok(_) => info!("Posted to Slack, and saved to Redis"),
-                            Err(err) => error!("Failed saving to Redis: {}", err),
+                            Ok(()) => info!("Posted to Slack, and saved to Redis"),
+                            Err(err) => error!("Failed saving to Redis: {err}"),
                         }
                     }
-                    Err(err) => error!("Failed posting to Slack: {}", err),
+                    Err(err) => error!("Failed posting to Slack: {err}"),
                 };
             }
             Ok(Some(raw)) => {
                 let mut archive = serde_json::from_str::<Archive>(&raw).unwrap();
-                if archive.hash != hashed_post {
-                    info!("Post has changed, updating Slack");
-                    match slack::update_message(item, &archive.timestamp).await {
-                        Ok(_) => {
-                            archive.hash = hashed_post;
-                            let raw = serde_json::to_string(&archive).unwrap();
-                            let result: RedisResult<()> = con.set(key, raw);
-
-                            match result {
-                                Ok(_) => info!("Finished updating Slack, and Redis"),
-                                Err(err) => error!("Failed saving to Redis: {}", err),
-                            }
-                        }
-                        Err(err) => error!("Failed posting to Slack: {}", err),
-                    };
-                } else {
+                if archive.hash == hashed_post {
                     info!("No changes here");
+                    return;
                 }
+
+                info!("Post has changed, updating Slack");
+                match slack::update_message(item, &archive.timestamp).await {
+                    Ok(_) => {
+                        archive.hash = hashed_post;
+                        let raw = serde_json::to_string(&archive).unwrap();
+                        let result: RedisResult<()> = con.set(key, raw);
+
+                        match result {
+                            Ok(()) => info!("Finished updating Slack, and Redis"),
+                            Err(err) => error!("Failed saving to Redis: {err}"),
+                        }
+                    }
+                    Err(err) => error!("Failed posting to Slack: {err}"),
+                };
             }
-            Err(err) => error!("Failed getting {} from Redis: {}", key, err),
+            Err(err) => error!("Failed getting {key} from Redis: {err}"),
         }
     }
 }

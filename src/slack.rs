@@ -22,21 +22,22 @@ pub struct Response {
     error: String,
 }
 
-fn format_slack_post(org: String) -> String {
-    static RE_PATTERN: OnceLock<Regex> = OnceLock::new();
+static RE_PATTERN: OnceLock<Regex> = OnceLock::new();
+
+fn format_slack_post(org: &str) -> String {
     RE_PATTERN
         .get_or_init(|| {
             Regex::new(r"\[(.*?)\]\((.*?)\)").expect("Hard-coded regex pattern should compile")
         })
-        .replace_all(&org, "<$2|$1>")
+        .replace_all(org, "<$2|$1>")
         .to_string()
 }
 
 pub async fn post_message(post: Post) -> Result<Response, Error> {
-    let content = format_slack_post(post.content);
+    let content = format_slack_post(&post.content);
     let payload = Message {
         channel: std::env::var("SLACK_CHANNEL_ID").unwrap(),
-        ts: "".to_string(),
+        ts: String::new(),
         text: format!("<{}|{}>\n{}", post.link, post.title, content),
     };
 
@@ -44,7 +45,7 @@ pub async fn post_message(post: Post) -> Result<Response, Error> {
 }
 
 pub async fn update_message(post: Post, timestamp: &String) -> Result<Response, Error> {
-    let content = format_slack_post(post.content);
+    let content = format_slack_post(&post.content);
     let payload = Message {
         channel: std::env::var("SLACK_CHANNEL_ID").unwrap(),
         ts: timestamp.to_string(),
@@ -58,8 +59,8 @@ async fn post_to_slack(method: String, payload: Message) -> Result<Response, Err
     let slack_token = std::env::var("SLACK_TOKEN").unwrap();
 
     let response = reqwest::Client::new()
-        .post(format!("https://slack.com/api/{}", method))
-        .header("Authorization", format!("Bearer {}", slack_token))
+        .post(format!("https://slack.com/api/{method}"))
+        .header("Authorization", format!("Bearer {slack_token}"))
         .header("Content-Type", "application/json; charset=utf-8")
         .json(&payload)
         .send()
