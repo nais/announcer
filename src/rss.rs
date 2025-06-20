@@ -1,7 +1,6 @@
 use crate::redis::Commands;
 use crate::slack;
 use log::{error, info};
-use md5;
 use redis::RedisResult;
 use serde::{Deserialize, Serialize};
 

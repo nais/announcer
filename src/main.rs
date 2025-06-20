@@ -4,14 +4,16 @@ mod rss;
 mod slack;
 
 use axum::{
+    Router, http,
+    response::{IntoResponse, Response},
     routing::{get, post},
-    Router,
 };
+use color_eyre::eyre;
 use log::{error, info};
-use structured_logger::{async_json::new_writer, Builder};
+use structured_logger::{Builder, async_json::new_writer};
 
 #[tokio::main]
-async fn main() {
+async fn main() -> eyre::Result<()> {
     Builder::with_level("info")
         .with_target_writer("*", new_writer(tokio::io::stdout()))
         .init();
@@ -33,21 +35,43 @@ async fn main() {
         get(|| async { "Hello, check out https://nais.io/log/!" }),
     );
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
+    axum::serve(listener, app).await.map_err(eyre::Error::msg)
 }
 
-async fn reconcile() {
+#[axum::debug_handler]
+async fn reconcile() -> Response {
     info!("Time to check the log");
     match reqwest::get("https://nais.io/log/rss.xml").await {
         Ok(resp) => {
             if !resp.status().is_success() {
                 error!("Got a response, but no XML");
-                return;
+                return (
+                    http::StatusCode::SERVICE_UNAVAILABLE,
+                    format!(
+                        "https://nais.io/log/rss.xml answers with: {}",
+                        resp.status()
+                    ),
+                )
+                    .into_response();
             }
-            let body = resp.text().await;
-            rss::handle_feed(&body.unwrap()).await;
+            let body = match resp.text().await {
+                Ok(b) => b,
+                Err(e) => {
+                    error!("Unable to parse nais.io/log's rss: {e}");
+                    return (
+                        http::StatusCode::INTERNAL_SERVER_ERROR,
+                        "Unable to decode nais log",
+                    )
+                        .into_response();
+                }
+            };
+            rss::handle_feed(&body).await;
         }
-        Err(e) => error!("Failed getting the feed: {e}"),
-    }
+        Err(e) => {
+            error!("Failed getting the feed: {e}");
+            return (http::StatusCode::INTERNAL_SERVER_ERROR, "HTTP client error").into_response();
+        }
+    };
+    (http::StatusCode::OK, "").into_response()
 }
