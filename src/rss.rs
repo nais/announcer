@@ -23,7 +23,7 @@ struct Feed {
 
 #[derive(Deserialize)]
 struct Rss {
-    feed: Feed,
+    channel: Feed,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -40,7 +40,11 @@ pub async fn handle_feed(xml: &str) {
             return;
         }
     };
-    info!("Found {} posts in {}", doc.feed.posts.len(), doc.feed.title);
+    info!(
+        "Found {} posts in {}",
+        doc.channel.posts.len(),
+        doc.channel.title
+    );
 
     let uri: String = if std::env::var("NAIS_CLUSTER_NAME").is_ok() {
         let host = std::env::var("REDIS_HOST_RSS")
@@ -72,7 +76,7 @@ pub async fn handle_feed(xml: &str) {
         }
     };
 
-    for item in doc.feed.posts {
+    for item in doc.channel.posts {
         let key = item.link.split('#').collect::<Vec<&str>>()[1].to_owned();
         info!(
             "Handling '{}' (date: {}, key: {key})",
