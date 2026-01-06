@@ -1,46 +1,48 @@
 extern crate redis;
 
+mod config;
 mod rss;
 mod slack;
 
 use axum::{
-    Router, http,
+    extract::State,
+    http,
     response::{IntoResponse, Response},
     routing::{get, post},
+    Router,
 };
 use color_eyre::eyre;
 use log::{error, info};
-use structured_logger::{Builder, async_json::new_writer};
+use structured_logger::{async_json::new_writer, Builder};
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
+    let app_config = config::AppConfig::from_env()?;
+
     Builder::with_level("info")
         .with_target_writer("*", new_writer(tokio::io::stdout()))
         .init();
 
     info!("Good morning, Nais!");
 
-    std::env::var("SLACK_TOKEN").expect("Missing SLACK_TOKEN env");
-    std::env::var("SLACK_CHANNEL_ID").expect("Missing SLACK_CHANNEL_ID env");
-
-    if std::env::var("NAIS_CLUSTER_NAME").is_ok() {
-        std::env::var("REDIS_HOST_RSS").expect("Missing REDIS_HOST_RSS env");
-        std::env::var("REDIS_USERNAME_RSS").expect("Missing REDIS_USERNAME_RSS env");
-        std::env::var("REDIS_PASSWORD_RSS").expect("Missing REDIS_PASSWORD_RSS env");
-        std::env::var("REDIS_PORT_RSS").expect("Missing REDIS_PORT_RSS env");
+    if app_config.mode.is_dry_run() {
+        info!("Running in DRY_RUN mode: Slack and Redis are disabled");
     }
 
-    let app = Router::new().route("/reconcile", post(reconcile)).route(
-        "/",
-        get(|| async { "Hello, check out https://nais.io/log/!" }),
-    );
+    let app = Router::new()
+        .route("/reconcile", post(reconcile))
+        .route(
+            "/",
+            get(|| async { "Hello, check out https://nais.io/log/!" }),
+        )
+        .with_state(app_config);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
     axum::serve(listener, app).await.map_err(eyre::Error::msg)
 }
 
 #[axum::debug_handler]
-async fn reconcile() -> Response {
+async fn reconcile(State(app_config): State<config::AppConfig>) -> Response {
     info!("Time to check the log");
     match reqwest::get("https://nais.io/log/rss.xml").await {
         Ok(resp) => {
@@ -66,7 +68,7 @@ async fn reconcile() -> Response {
                         .into_response();
                 }
             };
-            rss::handle_feed(&body).await;
+            rss::handle_feed(&body, &app_config).await;
         }
         Err(e) => {
             error!("Failed getting the feed: {e}");

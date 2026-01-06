@@ -6,14 +6,14 @@ use std::{
     sync::OnceLock,
 };
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 struct Message {
     channel: String,
     ts: String,
     text: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct Response {
     ok: bool,
     #[serde(default)]
@@ -24,7 +24,7 @@ pub struct Response {
 
 static RE_PATTERN: OnceLock<Regex> = OnceLock::new();
 
-fn format_slack_post(org: &str) -> String {
+pub(crate) fn format_slack_post(org: &str) -> String {
     RE_PATTERN
         .get_or_init(|| {
             Regex::new(r"\[(.*?)\]\((.*?)\)").expect("Hard-coded regex pattern should compile")
@@ -33,30 +33,41 @@ fn format_slack_post(org: &str) -> String {
         .to_string()
 }
 
-pub async fn post_message(post: Post) -> Result<Response, Error> {
+pub async fn post_message(
+    post: &Post,
+    slack_config: &crate::config::SlackConfig,
+) -> Result<Response, Error> {
     let content = format_slack_post(&post.content);
     let payload = Message {
-        channel: std::env::var("SLACK_CHANNEL_ID").unwrap(),
+        channel: slack_config.channel_id.clone(),
         ts: String::new(),
         text: format!("<{}|{}>\n{}", post.link, post.title, content),
     };
 
-    post_to_slack("chat.postMessage".to_string(), payload).await
+    post_to_slack("chat.postMessage", payload, slack_config).await
 }
 
-pub async fn update_message(post: Post, timestamp: &String) -> Result<Response, Error> {
+pub async fn update_message(
+    post: &Post,
+    timestamp: &str,
+    slack_config: &crate::config::SlackConfig,
+) -> Result<Response, Error> {
     let content = format_slack_post(&post.content);
     let payload = Message {
-        channel: std::env::var("SLACK_CHANNEL_ID").unwrap(),
+        channel: slack_config.channel_id.clone(),
         ts: timestamp.to_string(),
         text: format!("<{}|{}>\n{}", post.link, post.title, content),
     };
 
-    post_to_slack("chat.update".to_string(), payload).await
+    post_to_slack("chat.update", payload, slack_config).await
 }
 
-async fn post_to_slack(method: String, payload: Message) -> Result<Response, Error> {
-    let slack_token = std::env::var("SLACK_TOKEN").unwrap();
+async fn post_to_slack(
+    method: &str,
+    payload: Message,
+    slack_config: &crate::config::SlackConfig,
+) -> Result<Response, Error> {
+    let slack_token = &slack_config.token;
 
     let response = reqwest::Client::new()
         .post(format!("https://slack.com/api/{method}"))
