@@ -6,17 +6,17 @@ mod rss;
 mod slack;
 
 use axum::{
+    Router,
     extract::State,
     http,
     response::{IntoResponse, Response},
     routing::{get, post},
-    Router,
 };
 use color_eyre::eyre;
 use rss::FeedError;
 use tracing::{error, info};
 use tracing_log::LogTracer;
-use tracing_subscriber::{fmt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {

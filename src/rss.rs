@@ -41,10 +41,7 @@ pub struct Archive {
     pub timestamp: String,
 }
 
-pub async fn handle_feed(
-    xml: &str,
-    app_state: &config::AppState,
-) -> Result<(), FeedError> {
+pub async fn handle_feed(xml: &str, app_state: &config::AppState) -> Result<(), FeedError> {
     let doc: Rss = quick_xml::de::from_str(xml).map_err(|e| FeedError::RssParse(e.to_string()))?;
     info!(
         "Found {} posts in {}",
@@ -127,13 +124,12 @@ pub async fn handle_feed(
                     match slack_client.update_message(&item, &archive.timestamp).await {
                         Ok(_) => {
                             archive.hash = hashed_post;
-                            let raw =
-                                serde_json::to_string(&archive).map_err(|e| {
-                                    FeedError::SerializeArchive {
-                                        key: key.clone(),
-                                        error: e.to_string(),
-                                    }
-                                })?;
+                            let raw = serde_json::to_string(&archive).map_err(|e| {
+                                FeedError::SerializeArchive {
+                                    key: key.clone(),
+                                    error: e.to_string(),
+                                }
+                            })?;
                             match store.set(&key, &raw).await {
                                 Ok(()) => info!("Finished updating Slack, and Redis"),
                                 Err(err) => error!("Failed saving to Redis: {err}"),
