@@ -3,9 +3,15 @@ use crate::{
     redis_client::{InMemoryRedis, RedisClient, RedisStore},
     slack::{self, HttpSlackClient, SlackClient, StdoutSlackClient},
 };
-use color_eyre::eyre::{Context, Result};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
+
+#[derive(Debug)]
+pub enum FeedError {
+    RssParse(String),
+    InvalidArchive { key: String, error: String },
+    SerializeArchive { key: String, error: String },
+}
 
 #[derive(Debug, Deserialize)]
 pub struct Post {
@@ -35,8 +41,11 @@ pub struct Archive {
     pub timestamp: String,
 }
 
-pub async fn handle_feed(xml: &str, app_state: &config::AppState) -> Result<()> {
-    let doc: Rss = quick_xml::de::from_str(xml).wrap_err("Parsing RSS XML failed")?;
+pub async fn handle_feed(
+    xml: &str,
+    app_state: &config::AppState,
+) -> Result<(), FeedError> {
+    let doc: Rss = quick_xml::de::from_str(xml).map_err(|e| FeedError::RssParse(e.to_string()))?;
     info!(
         "Found {} posts in {}",
         doc.channel.posts.len(),
@@ -100,8 +109,12 @@ pub async fn handle_feed(xml: &str, app_state: &config::AppState) -> Result<()> 
                     };
                 }
                 Ok(Some(raw)) => {
-                    let mut archive = serde_json::from_str::<Archive>(&raw)
-                        .wrap_err_with(|| format!("Invalid archive JSON for key {key}"))?;
+                    let mut archive = serde_json::from_str::<Archive>(&raw).map_err(|e| {
+                        FeedError::InvalidArchive {
+                            key: key.clone(),
+                            error: e.to_string(),
+                        }
+                    })?;
                     if archive.hash == hashed_post {
                         info!("No changes here");
                         // continue processing the rest of the feed. an older post
@@ -114,8 +127,13 @@ pub async fn handle_feed(xml: &str, app_state: &config::AppState) -> Result<()> 
                     match slack_client.update_message(&item, &archive.timestamp).await {
                         Ok(_) => {
                             archive.hash = hashed_post;
-                            let raw = serde_json::to_string(&archive)
-                                .wrap_err_with(|| format!("Serializing archive for key {key}"))?;
+                            let raw =
+                                serde_json::to_string(&archive).map_err(|e| {
+                                    FeedError::SerializeArchive {
+                                        key: key.clone(),
+                                        error: e.to_string(),
+                                    }
+                                })?;
                             match store.set(&key, &raw).await {
                                 Ok(()) => info!("Finished updating Slack, and Redis"),
                                 Err(err) => error!("Failed saving to Redis: {err}"),

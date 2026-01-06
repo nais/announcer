@@ -6,16 +6,17 @@ mod rss;
 mod slack;
 
 use axum::{
-    Router,
     extract::State,
     http,
     response::{IntoResponse, Response},
     routing::{get, post},
+    Router,
 };
 use color_eyre::eyre;
+use rss::FeedError;
 use tracing::{error, info};
 use tracing_log::LogTracer;
-use tracing_subscriber::{EnvFilter, fmt, util::SubscriberInitExt};
+use tracing_subscriber::{fmt, util::SubscriberInitExt, EnvFilter};
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
@@ -78,12 +79,32 @@ async fn reconcile(State(state): State<config::AppState>) -> Response {
                 }
             };
             if let Err(e) = rss::handle_feed(&body, &state).await {
-                error!("Error handling RSS feed: {e:?}");
-                return (
-                    http::StatusCode::INTERNAL_SERVER_ERROR,
-                    "Failed to process RSS feed",
-                )
-                    .into_response();
+                match e {
+                    FeedError::RssParse(err) => {
+                        error!("Failed to parse RSS feed: {err}");
+                        return (
+                            http::StatusCode::INTERNAL_SERVER_ERROR,
+                            "Failed to parse RSS feed",
+                        )
+                            .into_response();
+                    }
+                    FeedError::InvalidArchive { key, error } => {
+                        error!("Invalid archive JSON for key {key}: {error}");
+                        return (
+                            http::StatusCode::INTERNAL_SERVER_ERROR,
+                            "Corrupted archive data in Redis",
+                        )
+                            .into_response();
+                    }
+                    FeedError::SerializeArchive { key, error } => {
+                        error!("Failed to serialize archive for key {key}: {error}");
+                        return (
+                            http::StatusCode::INTERNAL_SERVER_ERROR,
+                            "Failed to persist archive data",
+                        )
+                            .into_response();
+                    }
+                }
             }
         }
         Err(e) => {
