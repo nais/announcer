@@ -58,23 +58,23 @@ async fn ready(State(state): State<config::AppState>) -> impl IntoResponse {
         return (http::StatusCode::OK, "ok");
     }
 
-    match state.config.redis_config() {
+    match state.config.valkey_config() {
         Some(redis_cfg) => {
-            if crate::redis_client::RedisStore::connect(redis_cfg).is_some() {
+            if crate::redis_client::ValkeyStore::connect(redis_cfg).is_some() {
                 (http::StatusCode::OK, "ok")
             } else {
-                error!("Readiness check: unable to connect to Redis");
+                error!("Readiness check: unable to connect to Valkey");
                 (
                     http::StatusCode::SERVICE_UNAVAILABLE,
-                    "Redis not available",
+                    "Valkey not available",
                 )
             }
         }
         None => {
-            error!("Readiness check: no Redis configuration in Normal mode");
+            error!("Readiness check: no Valkey configuration in Normal mode");
             (
                 http::StatusCode::SERVICE_UNAVAILABLE,
-                "Redis not configured",
+                "Valkey not configured",
             )
         }
     }

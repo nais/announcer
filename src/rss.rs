@@ -1,6 +1,6 @@
 use crate::{
     config,
-    redis_client::{InMemoryRedis, RedisClient, RedisStore},
+    redis_client::{InMemoryValkey, ValkeyClient, ValkeyStore},
     slack::{self, HttpSlackClient, SlackClient, StdoutSlackClient},
 };
 use serde::{Deserialize, Serialize};
@@ -50,13 +50,13 @@ pub async fn handle_feed(xml: &str, app_state: &config::AppState) -> Result<(), 
         doc.channel.title
     );
 
-    let mut redis_client: Option<Box<dyn RedisClient>> = if app_state.config.is_dry_run() {
-        info!("DRY_RUN is set, using in-memory Redis");
-        Some(Box::new(InMemoryRedis::new()))
-    } else if let Some(redis_cfg) = app_state.config.redis_config() {
-        RedisStore::connect(redis_cfg).map(|store| Box::new(store) as Box<dyn RedisClient>)
+    let mut redis_client: Option<Box<dyn ValkeyClient>> = if app_state.config.is_dry_run() {
+        info!("DRY_RUN is set, using in-memory Valkey");
+        Some(Box::new(InMemoryValkey::new()))
+    } else if let Some(redis_cfg) = app_state.config.valkey_config() {
+        ValkeyStore::connect(redis_cfg).map(|store| Box::new(store) as Box<dyn ValkeyClient>)
     } else {
-        info!("No Redis configuration available, skipping Redis connectivity and persistence");
+        info!("No Valkey configuration available, skipping Valkey connectivity and persistence");
         None
     };
 

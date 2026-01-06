@@ -1,31 +1,31 @@
-use crate::config::RedisConfig;
+use crate::config::ValkeyConfig;
 use async_trait::async_trait;
 use redis::{Commands, Connection, RedisResult};
 use std::collections::HashMap;
 use tracing::error;
 
 #[async_trait]
-pub trait RedisClient: Send {
+pub trait ValkeyClient: Send {
     async fn get(&mut self, key: &str) -> RedisResult<Option<String>>;
     async fn set(&mut self, key: &str, value: &str) -> RedisResult<()>;
 }
 
-pub struct RedisStore {
+pub struct ValkeyStore {
     connection: Connection,
 }
 
-impl RedisStore {
-    pub fn connect(config: &RedisConfig) -> Option<Self> {
+impl ValkeyStore {
+    pub fn connect(config: &ValkeyConfig) -> Option<Self> {
         match redis::Client::open(config.uri.clone()) {
             Ok(client) => match client.get_connection() {
                 Ok(connection) => Some(Self { connection }),
                 Err(err) => {
-                    error!("Opening connection to Redis failed: {err}");
+                    error!("Opening connection to Valkey failed: {err}");
                     None
                 }
             },
             Err(err) => {
-                error!("Connecting to Redis failed: {err}");
+                error!("Connecting to Valkey failed: {err}");
                 None
             }
         }
@@ -33,7 +33,7 @@ impl RedisStore {
 }
 
 #[async_trait]
-impl RedisClient for RedisStore {
+impl ValkeyClient for ValkeyStore {
     async fn get(&mut self, key: &str) -> RedisResult<Option<String>> {
         self.connection.get(key)
     }
@@ -43,11 +43,11 @@ impl RedisClient for RedisStore {
     }
 }
 
-pub struct InMemoryRedis {
+pub struct InMemoryValkey {
     store: HashMap<String, String>,
 }
 
-impl InMemoryRedis {
+impl InMemoryValkey {
     pub fn new() -> Self {
         Self {
             store: HashMap::new(),
@@ -56,7 +56,7 @@ impl InMemoryRedis {
 }
 
 #[async_trait]
-impl RedisClient for InMemoryRedis {
+impl ValkeyClient for InMemoryValkey {
     async fn get(&mut self, key: &str) -> RedisResult<Option<String>> {
         Ok(self.store.get(key).cloned())
     }

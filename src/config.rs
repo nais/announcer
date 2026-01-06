@@ -1,8 +1,8 @@
-use color_eyre::eyre::{Context, Result, eyre};
+use color_eyre::eyre::{eyre, Context, Result};
 use reqwest::Client;
 
 #[derive(Debug, Clone)]
-pub struct RedisConfig {
+pub struct ValkeyConfig {
     pub uri: String,
 }
 
@@ -16,7 +16,7 @@ pub struct SlackConfig {
 pub enum AppConfig {
     DryRun,
     Normal {
-        redis: RedisConfig,
+        valkey: ValkeyConfig,
         slack: SlackConfig,
     },
 }
@@ -33,7 +33,7 @@ impl AppConfig {
             .wrap_err("Missing SLACK_CHANNEL_ID env; required in normal mode")?;
         let slack = SlackConfig { token, channel_id };
 
-        let redis = if std::env::var("NAIS_CLUSTER_NAME").is_ok() {
+        let valkey = if std::env::var("NAIS_CLUSTER_NAME").is_ok() {
             let host = std::env::var("REDIS_HOST_RSS")
                 .wrap_err("Missing REDIS_HOST_RSS env; required when running in NAIS")?;
             let username = std::env::var("REDIS_USERNAME_RSS")
@@ -44,14 +44,14 @@ impl AppConfig {
                 .wrap_err("Missing REDIS_PORT_RSS env; required when running in NAIS")?;
 
             let uri = format!("rediss://{username}:{password}@{host}:{port}");
-            RedisConfig { uri }
+            ValkeyConfig { uri }
         } else {
-            RedisConfig {
+            ValkeyConfig {
                 uri: "redis://localhost:6379".to_string(),
             }
         };
 
-        Ok(AppConfig::Normal { redis, slack })
+        Ok(AppConfig::Normal { valkey, slack })
     }
 
     pub fn is_dry_run(&self) -> bool {
@@ -65,9 +65,9 @@ impl AppConfig {
         }
     }
 
-    pub fn redis_config(&self) -> Option<&RedisConfig> {
+    pub fn valkey_config(&self) -> Option<&ValkeyConfig> {
         match self {
-            AppConfig::Normal { redis, .. } => Some(redis),
+            AppConfig::Normal { valkey, .. } => Some(valkey),
             AppConfig::DryRun => None,
         }
     }
