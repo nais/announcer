@@ -35,7 +35,7 @@ async fn main() -> eyre::Result<()> {
 
     info!("Good morning, Nais!");
 
-    if state.config.mode.is_dry_run() {
+    if state.config.is_dry_run() {
         info!("Running in DRY_RUN mode: Slack and Redis are disabled");
     }
 

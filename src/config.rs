@@ -1,17 +1,5 @@
-use color_eyre::eyre::{Context, Result, eyre};
+use color_eyre::eyre::{eyre, Context, Result};
 use reqwest::Client;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Mode {
-    Normal,
-    DryRun,
-}
-
-impl Mode {
-    pub fn is_dry_run(self) -> bool {
-        matches!(self, Mode::DryRun)
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct RedisConfig {
@@ -25,33 +13,27 @@ pub struct SlackConfig {
 }
 
 #[derive(Debug, Clone)]
-pub struct AppConfig {
-    pub mode: Mode,
-    pub redis: Option<RedisConfig>,
-    pub slack: Option<SlackConfig>,
+pub enum AppConfig {
+    DryRun,
+    Normal {
+        redis: RedisConfig,
+        slack: SlackConfig,
+    },
 }
 
 impl AppConfig {
     pub fn from_env() -> Result<Self> {
-        let mode = if std::env::var("DRY_RUN").is_ok() {
-            Mode::DryRun
-        } else {
-            Mode::Normal
-        };
+        if std::env::var("DRY_RUN").is_ok() {
+            return Ok(AppConfig::DryRun);
+        }
 
-        let slack = if mode.is_dry_run() {
-            None
-        } else {
-            let token = std::env::var("SLACK_TOKEN")
-                .wrap_err("Missing SLACK_TOKEN env; required in normal mode")?;
-            let channel_id = std::env::var("SLACK_CHANNEL_ID")
-                .wrap_err("Missing SLACK_CHANNEL_ID env; required in normal mode")?;
-            Some(SlackConfig { token, channel_id })
-        };
+        let token = std::env::var("SLACK_TOKEN")
+            .wrap_err("Missing SLACK_TOKEN env; required in normal mode")?;
+        let channel_id = std::env::var("SLACK_CHANNEL_ID")
+            .wrap_err("Missing SLACK_CHANNEL_ID env; required in normal mode")?;
+        let slack = SlackConfig { token, channel_id };
 
-        let redis = if mode.is_dry_run() {
-            None
-        } else if std::env::var("NAIS_CLUSTER_NAME").is_ok() {
+        let redis = if std::env::var("NAIS_CLUSTER_NAME").is_ok() {
             let host = std::env::var("REDIS_HOST_RSS")
                 .wrap_err("Missing REDIS_HOST_RSS env; required when running in NAIS")?;
             let username = std::env::var("REDIS_USERNAME_RSS")
@@ -62,25 +44,33 @@ impl AppConfig {
                 .wrap_err("Missing REDIS_PORT_RSS env; required when running in NAIS")?;
 
             let uri = format!("rediss://{username}:{password}@{host}:{port}");
-            Some(RedisConfig { uri })
+            RedisConfig { uri }
         } else {
             // Local development default; matches previous behaviour.
-            Some(RedisConfig {
+            RedisConfig {
                 uri: "redis://localhost:6379".to_string(),
-            })
+            }
         };
 
-        Ok(Self { mode, redis, slack })
+        Ok(AppConfig::Normal { redis, slack })
+    }
+
+    pub fn is_dry_run(&self) -> bool {
+        matches!(self, AppConfig::DryRun)
     }
 
     pub fn slack_config(&self) -> Result<&SlackConfig> {
-        self.slack
-            .as_ref()
-            .ok_or_else(|| eyre!("Slack configuration missing"))
+        match self {
+            AppConfig::Normal { slack, .. } => Ok(slack),
+            AppConfig::DryRun => Err(eyre!("Slack configuration missing in DryRun mode")),
+        }
     }
 
     pub fn redis_config(&self) -> Option<&RedisConfig> {
-        self.redis.as_ref()
+        match self {
+            AppConfig::Normal { redis, .. } => Some(redis),
+            AppConfig::DryRun => None,
+        }
     }
 }
 

@@ -52,7 +52,7 @@ pub async fn handle_feed(
         doc.channel.title
     );
 
-    let mut redis_client: Option<Box<dyn RedisClient>> = if app_state.config.mode.is_dry_run() {
+    let mut redis_client: Option<Box<dyn RedisClient>> = if app_state.config.is_dry_run() {
         info!("DRY_RUN is set, using in-memory Redis");
         Some(Box::new(InMemoryRedis::new()))
     } else if let Some(redis_cfg) = app_state.config.redis_config() {
@@ -62,7 +62,7 @@ pub async fn handle_feed(
         None
     };
 
-    let slack_client: Box<dyn SlackClient> = if app_state.config.mode.is_dry_run() {
+    let slack_client: Box<dyn SlackClient> = if app_state.config.is_dry_run() {
         Box::new(StdoutSlackClient::default())
     } else {
         match app_state.config.slack_config() {
@@ -165,7 +165,7 @@ would post Slack message and skip persistence:\n{}",
 #[cfg(test)]
 mod tests {
     use super::handle_feed;
-    use crate::config::{AppConfig, AppState, Mode};
+    use crate::config::{AppConfig, AppState};
 
     const SAMPLE_RSS: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
@@ -182,11 +182,7 @@ mod tests {
 
     #[tokio::test]
     async fn handle_feed_succeeds_in_dry_run() {
-        let config = AppConfig {
-            mode: Mode::DryRun,
-            redis: None,
-            slack: None,
-        };
+        let config = AppConfig::DryRun;
         let state = AppState::new(config);
 
         let result = handle_feed(SAMPLE_RSS, &state).await;
