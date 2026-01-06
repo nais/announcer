@@ -14,7 +14,7 @@ use axum::{
 };
 use color_eyre::eyre;
 use rss::FeedError;
-use tracing::{error, info};
+use tracing::{error, info, instrument};
 use tracing_log::LogTracer;
 use tracing_subscriber::{EnvFilter, fmt, util::SubscriberInitExt};
 
@@ -52,8 +52,12 @@ async fn main() -> eyre::Result<()> {
 }
 
 #[axum::debug_handler]
+#[instrument(skip(state))]
 async fn reconcile(State(state): State<config::AppState>) -> Response {
-    info!("Time to check the log");
+    info!(
+        mode = %if state.config.is_dry_run() { "DryRun" } else { "Normal" },
+        "Time to check the log"
+    );
     match reqwest::get("https://nais.io/log/rss.xml").await {
         Ok(resp) => {
             if !resp.status().is_success() {

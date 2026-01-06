@@ -4,7 +4,7 @@ use crate::{
     slack::{self, HttpSlackClient, SlackClient, StdoutSlackClient},
 };
 use serde::{Deserialize, Serialize};
-use tracing::{error, info};
+use tracing::{error, info, instrument};
 
 #[derive(Debug)]
 pub enum FeedError {
@@ -41,6 +41,7 @@ pub struct Archive {
     pub timestamp: String,
 }
 
+#[instrument(skip(xml, app_state))]
 pub async fn handle_feed(xml: &str, app_state: &config::AppState) -> Result<(), FeedError> {
     let doc: Rss = quick_xml::de::from_str(xml).map_err(|e| FeedError::RssParse(e.to_string()))?;
     info!(
@@ -75,10 +76,18 @@ pub async fn handle_feed(xml: &str, app_state: &config::AppState) -> Result<(), 
     };
 
     for item in doc.channel.posts {
-        let key = item.link.split('#').collect::<Vec<&str>>()[1].to_owned();
+        let key = item
+            .link
+            .split('#')
+            .collect::<Vec<&str>>()
+            .get(1)
+            .copied()
+            .unwrap_or(&item.link);
         info!(
-            "Handling '{}' (date: {}, key: {key})",
-            item.title, item.pub_date
+            post_key = %key,
+            title = %item.title,
+            pub_date = %item.pub_date,
+            "Handling post"
         );
 
         let hashed_post = format!(
@@ -89,7 +98,7 @@ pub async fn handle_feed(xml: &str, app_state: &config::AppState) -> Result<(), 
         if let Some(store) = &mut redis_client {
             match store.get(&key).await {
                 Ok(None) => {
-                    info!("New post, pushing to Slack");
+                    info!(post_key = %key, "New post, pushing to Slack");
                     match slack_client.post_message(&item).await {
                         Ok(response) => {
                             let archive = Archive {
@@ -98,47 +107,58 @@ pub async fn handle_feed(xml: &str, app_state: &config::AppState) -> Result<(), 
                             };
                             let raw = serde_json::to_string(&archive).unwrap();
                             match store.set(&key, &raw).await {
-                                Ok(()) => info!("Posted to Slack, and saved to Redis"),
-                                Err(err) => error!("Failed saving to Redis: {err}"),
+                                Ok(()) => {
+                                    info!(post_key = %key, "Posted to Slack, and saved to Redis")
+                                }
+                                Err(err) => {
+                                    error!(post_key = %key, error = %err, "Failed saving to Redis")
+                                }
                             }
                         }
-                        Err(err) => error!("Failed posting to Slack: {err}"),
+                        Err(err) => {
+                            error!(post_key = %key, error = %err, "Failed posting to Slack")
+                        }
                     };
                 }
                 Ok(Some(raw)) => {
                     let mut archive = serde_json::from_str::<Archive>(&raw).map_err(|e| {
                         FeedError::InvalidArchive {
-                            key: key.clone(),
+                            key: key.to_string(),
                             error: e.to_string(),
                         }
                     })?;
                     if archive.hash == hashed_post {
-                        info!("No changes here");
-                        // continue processing the rest of the feed. an older post
+                        info!(post_key = %key, "No changes here");
+                        // Continue processing the rest of the feed; an older post
                         // might still have changed even if this one has not.
-                        // Todo: ask kyrre about this guy actually. are we just optimizing this?
                         continue;
                     }
 
-                    info!("Post has changed, updating Slack");
+                    info!(post_key = %key, "Post has changed, updating Slack");
                     match slack_client.update_message(&item, &archive.timestamp).await {
                         Ok(_) => {
                             archive.hash = hashed_post;
                             let raw = serde_json::to_string(&archive).map_err(|e| {
                                 FeedError::SerializeArchive {
-                                    key: key.clone(),
+                                    key: key.to_string(),
                                     error: e.to_string(),
                                 }
                             })?;
                             match store.set(&key, &raw).await {
-                                Ok(()) => info!("Finished updating Slack, and Redis"),
-                                Err(err) => error!("Failed saving to Redis: {err}"),
+                                Ok(()) => {
+                                    info!(post_key = %key, "Finished updating Slack, and Redis")
+                                }
+                                Err(err) => {
+                                    error!(post_key = %key, error = %err, "Failed saving to Redis")
+                                }
                             }
                         }
-                        Err(err) => error!("Failed posting to Slack: {err}"),
+                        Err(err) => {
+                            error!(post_key = %key, error = %err, "Failed posting to Slack")
+                        }
                     };
                 }
-                Err(err) => error!("Failed getting {key} from Redis: {err}"),
+                Err(err) => error!(post_key = %key, error = %err, "Failed getting key from Redis"),
             }
         } else {
             let preview = format!(
@@ -148,9 +168,8 @@ pub async fn handle_feed(xml: &str, app_state: &config::AppState) -> Result<(), 
                 slack::format_slack_post(&item.content)
             );
             info!(
-                "No Redis connection available (DRY_RUN or connection error), \
-would post Slack message and skip persistence:\n{}",
-                preview
+                post_key = %key,
+                "No Redis connection available (DRY_RUN or connection error), would post Slack message and skip persistence: {preview}"
             );
         }
     }
