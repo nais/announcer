@@ -1,4 +1,5 @@
-use color_eyre::eyre::{eyre, Context, Result};
+use color_eyre::eyre::{Context, Result, eyre};
+use reqwest::Client;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -69,11 +70,7 @@ impl AppConfig {
             })
         };
 
-        Ok(Self {
-            mode,
-            redis,
-            slack,
-        })
+        Ok(Self { mode, redis, slack })
     }
 
     pub fn slack_config(&self) -> Result<&SlackConfig> {
@@ -87,3 +84,17 @@ impl AppConfig {
     }
 }
 
+#[derive(Clone)]
+pub struct AppState {
+    pub config: AppConfig,
+    pub http_client: Client,
+}
+
+impl AppState {
+    pub fn new(config: AppConfig) -> Self {
+        Self {
+            config,
+            http_client: Client::new(),
+        }
+    }
+}

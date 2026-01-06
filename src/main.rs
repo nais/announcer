@@ -6,16 +6,16 @@ mod rss;
 mod slack;
 
 use axum::{
+    Router,
     extract::State,
     http,
     response::{IntoResponse, Response},
     routing::{get, post},
-    Router,
 };
 use color_eyre::eyre;
 use tracing::{error, info};
 use tracing_log::LogTracer;
-use tracing_subscriber::{fmt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
@@ -30,9 +30,11 @@ async fn main() -> eyre::Result<()> {
         .finish()
         .init();
 
+    let state = config::AppState::new(app_config);
+
     info!("Good morning, Nais!");
 
-    if app_config.mode.is_dry_run() {
+    if state.config.mode.is_dry_run() {
         info!("Running in DRY_RUN mode: Slack and Redis are disabled");
     }
 
@@ -42,14 +44,14 @@ async fn main() -> eyre::Result<()> {
             "/",
             get(|| async { "Hello, check out https://nais.io/log/!" }),
         )
-        .with_state(app_config);
+        .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
     axum::serve(listener, app).await.map_err(eyre::Error::msg)
 }
 
 #[axum::debug_handler]
-async fn reconcile(State(app_config): State<config::AppConfig>) -> Response {
+async fn reconcile(State(state): State<config::AppState>) -> Response {
     info!("Time to check the log");
     match reqwest::get("https://nais.io/log/rss.xml").await {
         Ok(resp) => {
@@ -75,7 +77,14 @@ async fn reconcile(State(app_config): State<config::AppConfig>) -> Response {
                         .into_response();
                 }
             };
-            rss::handle_feed(&body, &app_config).await;
+            if let Err(e) = rss::handle_feed(&body, &state).await {
+                error!("Error handling RSS feed: {e:?}");
+                return (
+                    http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to process RSS feed",
+                )
+                    .into_response();
+            }
         }
         Err(e) => {
             error!("Failed getting the feed: {e}");

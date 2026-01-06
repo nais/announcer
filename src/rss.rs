@@ -3,6 +3,7 @@ use crate::{
     redis_client::{InMemoryRedis, RedisClient, RedisStore},
     slack::{self, HttpSlackClient, SlackClient, StdoutSlackClient},
 };
+use color_eyre::eyre::{Context, Result};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
@@ -34,35 +35,32 @@ pub struct Archive {
     pub timestamp: String,
 }
 
-pub async fn handle_feed(xml: &str, app_config: &config::AppConfig) {
-    let doc: Rss = match quick_xml::de::from_str(xml) {
-        Ok(d) => d,
-        Err(e) => {
-            error!("Parsing XML failed: {e}");
-            return;
-        }
-    };
+pub async fn handle_feed(xml: &str, app_state: &config::AppState) -> Result<()> {
+    let doc: Rss = quick_xml::de::from_str(xml).wrap_err("Parsing RSS XML failed")?;
     info!(
         "Found {} posts in {}",
         doc.channel.posts.len(),
         doc.channel.title
     );
 
-    let mut redis_client: Option<Box<dyn RedisClient>> = if app_config.mode.is_dry_run() {
+    let mut redis_client: Option<Box<dyn RedisClient>> = if app_state.config.mode.is_dry_run() {
         info!("DRY_RUN is set, using in-memory Redis");
         Some(Box::new(InMemoryRedis::new()))
-    } else if let Some(redis_cfg) = app_config.redis_config() {
+    } else if let Some(redis_cfg) = app_state.config.redis_config() {
         RedisStore::connect(redis_cfg).map(|store| Box::new(store) as Box<dyn RedisClient>)
     } else {
         info!("No Redis configuration available, skipping Redis connectivity and persistence");
         None
     };
 
-    let slack_client: Box<dyn SlackClient> = if app_config.mode.is_dry_run() {
+    let slack_client: Box<dyn SlackClient> = if app_state.config.mode.is_dry_run() {
         Box::new(StdoutSlackClient::default())
     } else {
-        match app_config.slack_config() {
-            Ok(cfg) => Box::new(HttpSlackClient::new(cfg.clone())),
+        match app_state.config.slack_config() {
+            Ok(cfg) => Box::new(HttpSlackClient::new(
+                cfg.clone(),
+                app_state.http_client.clone(),
+            )),
             Err(e) => {
                 error!("Slack configuration missing when trying to post: {e}");
                 Box::new(StdoutSlackClient::default())
@@ -102,17 +100,22 @@ pub async fn handle_feed(xml: &str, app_config: &config::AppConfig) {
                     };
                 }
                 Ok(Some(raw)) => {
-                    let mut archive = serde_json::from_str::<Archive>(&raw).unwrap();
+                    let mut archive = serde_json::from_str::<Archive>(&raw)
+                        .wrap_err_with(|| format!("Invalid archive JSON for key {key}"))?;
                     if archive.hash == hashed_post {
                         info!("No changes here");
-                        return;
+                        // continue processing the rest of the feed. an older post
+                        // might still have changed even if this one has not.
+                        // Todo: ask kyrre about this guy actually. are we just optimizing this?
+                        continue;
                     }
 
                     info!("Post has changed, updating Slack");
                     match slack_client.update_message(&item, &archive.timestamp).await {
                         Ok(_) => {
                             archive.hash = hashed_post;
-                            let raw = serde_json::to_string(&archive).unwrap();
+                            let raw = serde_json::to_string(&archive)
+                                .wrap_err_with(|| format!("Serializing archive for key {key}"))?;
                             match store.set(&key, &raw).await {
                                 Ok(()) => info!("Finished updating Slack, and Redis"),
                                 Err(err) => error!("Failed saving to Redis: {err}"),
@@ -137,4 +140,6 @@ would post Slack message and skip persistence:\n{}",
             );
         }
     }
+
+    Ok(())
 }

@@ -48,11 +48,8 @@ pub struct HttpSlackClient {
 }
 
 impl HttpSlackClient {
-    pub fn new(config: SlackConfig) -> Self {
-        Self {
-            config,
-            client: reqwest::Client::new(),
-        }
+    pub fn new(config: SlackConfig, client: reqwest::Client) -> Self {
+        Self { config, client }
     }
 
     async fn send(&self, method: &str, payload: &Message) -> Result<Response, Error> {
