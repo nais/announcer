@@ -1,6 +1,7 @@
 extern crate redis;
 
 mod config;
+mod redis_client;
 mod rss;
 mod slack;
 

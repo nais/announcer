@@ -1,6 +1,9 @@
-use crate::{config, slack};
+use crate::{
+    config,
+    redis_client::{InMemoryRedis, RedisClient, RedisStore},
+    slack::{self, HttpSlackClient, SlackClient, StdoutSlackClient},
+};
 use log::{error, info};
-use redis::{Commands, RedisResult};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
@@ -45,26 +48,26 @@ pub async fn handle_feed(xml: &str, app_config: &config::AppConfig) {
         doc.channel.title
     );
 
-    let mut connection = if app_config.mode.is_dry_run() {
-        info!("DRY_RUN is set, skipping Redis connectivity and persistence");
-        None
+    let mut redis_client: Option<Box<dyn RedisClient>> = if app_config.mode.is_dry_run() {
+        info!("DRY_RUN is set, using in-memory Redis");
+        Some(Box::new(InMemoryRedis::new()))
     } else if let Some(redis_cfg) = app_config.redis_config() {
-        match redis::Client::open(redis_cfg.uri.clone()) {
-            Ok(client) => match client.get_connection() {
-                Ok(conn) => Some(conn),
-                Err(err) => {
-                    error!("Opening connection to Redis failed: {err}");
-                    None
-                }
-            },
-            Err(err) => {
-                error!("Connecting to Redis failed: {err}");
-                None
-            }
-        }
+        RedisStore::connect(redis_cfg).map(|store| Box::new(store) as Box<dyn RedisClient>)
     } else {
         info!("No Redis configuration available, skipping Redis connectivity and persistence");
         None
+    };
+
+    let slack_client: Box<dyn SlackClient> = if app_config.mode.is_dry_run() {
+        Box::new(StdoutSlackClient::default())
+    } else {
+        match app_config.slack_config() {
+            Ok(cfg) => Box::new(HttpSlackClient::new(cfg.clone())),
+            Err(e) => {
+                error!("Slack configuration missing when trying to post: {e}");
+                Box::new(StdoutSlackClient::default())
+            }
+        }
     };
 
     for item in doc.channel.posts {
@@ -79,27 +82,18 @@ pub async fn handle_feed(xml: &str, app_config: &config::AppConfig) {
             md5::compute(format!("{}-{}", item.title, item.content))
         );
 
-        if let Some(con) = &mut connection {
-            match con.get::<_, Option<String>>(&key) {
+        if let Some(store) = &mut redis_client {
+            match store.get(&key).await {
                 Ok(None) => {
                     info!("New post, pushing to Slack");
-                    let slack_cfg = match app_config.slack_config() {
-                        Ok(cfg) => cfg,
-                        Err(e) => {
-                            error!("Slack configuration missing when trying to post: {e}");
-                            continue;
-                        }
-                    };
-                    match slack::post_message(&item, slack_cfg).await {
+                    match slack_client.post_message(&item).await {
                         Ok(response) => {
                             let archive = Archive {
                                 hash: hashed_post,
                                 timestamp: response.ts,
                             };
                             let raw = serde_json::to_string(&archive).unwrap();
-                            let result: RedisResult<()> = con.set(key, raw);
-
-                            match result {
+                            match store.set(&key, &raw).await {
                                 Ok(()) => info!("Posted to Slack, and saved to Redis"),
                                 Err(err) => error!("Failed saving to Redis: {err}"),
                             }
@@ -115,20 +109,11 @@ pub async fn handle_feed(xml: &str, app_config: &config::AppConfig) {
                     }
 
                     info!("Post has changed, updating Slack");
-                    let slack_cfg = match app_config.slack_config() {
-                        Ok(cfg) => cfg,
-                        Err(e) => {
-                            error!("Slack configuration missing when trying to update: {e}");
-                            continue;
-                        }
-                    };
-                    match slack::update_message(&item, &archive.timestamp, slack_cfg).await {
+                    match slack_client.update_message(&item, &archive.timestamp).await {
                         Ok(_) => {
                             archive.hash = hashed_post;
                             let raw = serde_json::to_string(&archive).unwrap();
-                            let result: RedisResult<()> = con.set(key, raw);
-
-                            match result {
+                            match store.set(&key, &raw).await {
                                 Ok(()) => info!("Finished updating Slack, and Redis"),
                                 Err(err) => error!("Failed saving to Redis: {err}"),
                             }
