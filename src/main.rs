@@ -15,15 +15,11 @@ use axum::{
 use color_eyre::eyre;
 use rss::FeedError;
 use tracing::{error, info, instrument};
-use tracing_log::LogTracer;
 use tracing_subscriber::{EnvFilter, fmt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
     let app_config = config::AppConfig::from_env()?;
-
-    // Forward `log` records from dependencies into `tracing`.
-    LogTracer::init().ok();
 
     fmt()
         .with_env_filter(EnvFilter::from_default_env())
@@ -41,6 +37,8 @@ async fn main() -> eyre::Result<()> {
 
     let app = Router::new()
         .route("/reconcile", post(reconcile))
+        .route("/internal/health", get(healthz))
+        .route("/internal/ready", get(ready))
         .route(
             "/",
             get(|| async { "Hello, check out https://nais.io/log/!" }),
@@ -49,6 +47,14 @@ async fn main() -> eyre::Result<()> {
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
     axum::serve(listener, app).await.map_err(eyre::Error::msg)
+}
+
+async fn healthz() -> &'static str {
+    "ok"
+}
+
+async fn ready() -> &'static str {
+    "ok"
 }
 
 #[axum::debug_handler]

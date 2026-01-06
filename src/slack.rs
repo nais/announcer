@@ -6,7 +6,7 @@ use std::{
     io::{Error, ErrorKind},
     sync::OnceLock,
 };
-use tracing::info;
+use tracing::{debug, info};
 
 #[derive(Debug, Serialize)]
 struct Message {
@@ -109,7 +109,12 @@ impl SlackClient for StdoutSlackClient {
     async fn post_message(&self, post: &Post) -> Result<Response, Error> {
         let content = format_slack_post(&post.content);
         let text = format!("<{}|{}>\n{}", post.link, post.title, content);
-        info!("DRY_RUN Slack post:\n{text}");
+        info!(
+            title = %post.title,
+            link = %post.link,
+            "DRY_RUN Slack post"
+        );
+        debug!(%text, "DRY_RUN Slack post body");
 
         Ok(Response {
             ok: true,
@@ -121,7 +126,13 @@ impl SlackClient for StdoutSlackClient {
     async fn update_message(&self, post: &Post, timestamp: &str) -> Result<Response, Error> {
         let content = format_slack_post(&post.content);
         let text = format!("<{}|{}>\n{}", post.link, post.title, content);
-        info!("DRY_RUN Slack update (ts={timestamp}):\n{text}");
+        info!(
+            title = %post.title,
+            link = %post.link,
+            ts = %timestamp,
+            "DRY_RUN Slack update"
+        );
+        debug!(%text, "DRY_RUN Slack update body");
 
         Ok(Response {
             ok: true,

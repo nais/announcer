@@ -21,6 +21,18 @@ spec:
     logging:
       destinations:
         - id: loki
+  liveness:
+    path: /internal/health
+    port: 8080
+    initialDelay: 3
+    periodSeconds: 5
+    failureThreshold: 10
+  readiness:
+    path: /internal/ready
+    port: 8080
+    initialDelay: 3
+    periodSeconds: 5
+    failureThreshold: 10
   resources:
     limits:
       memory: 32Mi

@@ -169,8 +169,10 @@ pub async fn handle_feed(xml: &str, app_state: &config::AppState) -> Result<(), 
             );
             info!(
                 post_key = %key,
-                "No Redis connection available (DRY_RUN or connection error), would post Slack message and skip persistence: {preview}"
+                title = %item.title,
+                "No Redis connection available (DRY_RUN or connection error), would post Slack message and skip persistence"
             );
+            tracing::debug!(post_key = %key, %preview, "DRY_RUN Slack preview body");
         }
     }
 

@@ -46,7 +46,6 @@ impl AppConfig {
             let uri = format!("rediss://{username}:{password}@{host}:{port}");
             RedisConfig { uri }
         } else {
-            // Local development default; matches previous behaviour.
             RedisConfig {
                 uri: "redis://localhost:6379".to_string(),
             }
