@@ -1,12 +1,12 @@
 use crate::{config::SlackConfig, rss::Post};
 use async_trait::async_trait;
-use log::info;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::{
     io::{Error, ErrorKind},
     sync::OnceLock,
 };
+use tracing::info;
 
 #[derive(Debug, Serialize)]
 struct Message {

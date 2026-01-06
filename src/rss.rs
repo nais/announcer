@@ -3,8 +3,8 @@ use crate::{
     redis_client::{InMemoryRedis, RedisClient, RedisStore},
     slack::{self, HttpSlackClient, SlackClient, StdoutSlackClient},
 };
-use log::{error, info};
 use serde::{Deserialize, Serialize};
+use tracing::{error, info};
 
 #[derive(Debug, Deserialize)]
 pub struct Post {

@@ -13,15 +13,21 @@ use axum::{
     Router,
 };
 use color_eyre::eyre;
-use log::{error, info};
-use structured_logger::{async_json::new_writer, Builder};
+use tracing::{error, info};
+use tracing_log::LogTracer;
+use tracing_subscriber::{fmt, util::SubscriberInitExt, EnvFilter};
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
     let app_config = config::AppConfig::from_env()?;
 
-    Builder::with_level("info")
-        .with_target_writer("*", new_writer(tokio::io::stdout()))
+    // Forward `log` records from dependencies into `tracing`.
+    LogTracer::init().ok();
+
+    fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .json()
+        .finish()
         .init();
 
     info!("Good morning, Nais!");

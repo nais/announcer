@@ -1,8 +1,8 @@
 use crate::config::RedisConfig;
 use async_trait::async_trait;
-use log::error;
 use redis::{Commands, Connection, RedisResult};
 use std::collections::HashMap;
+use tracing::error;
 
 #[async_trait]
 pub trait RedisClient: Send {
