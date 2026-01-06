@@ -53,8 +53,31 @@ async fn healthz() -> &'static str {
     "ok"
 }
 
-async fn ready() -> &'static str {
-    "ok"
+async fn ready(State(state): State<config::AppState>) -> impl IntoResponse {
+    if state.config.is_dry_run() {
+        return (http::StatusCode::OK, "ok");
+    }
+
+    match state.config.redis_config() {
+        Some(redis_cfg) => {
+            if crate::redis_client::RedisStore::connect(redis_cfg).is_some() {
+                (http::StatusCode::OK, "ok")
+            } else {
+                error!("Readiness check: unable to connect to Redis");
+                (
+                    http::StatusCode::SERVICE_UNAVAILABLE,
+                    "Redis not available",
+                )
+            }
+        }
+        None => {
+            error!("Readiness check: no Redis configuration in Normal mode");
+            (
+                http::StatusCode::SERVICE_UNAVAILABLE,
+                "Redis not configured",
+            )
+        }
+    }
 }
 
 #[axum::debug_handler]
