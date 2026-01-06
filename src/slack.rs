@@ -130,3 +130,28 @@ impl SlackClient for StdoutSlackClient {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::format_slack_post;
+
+    #[test]
+    fn formats_single_markdown_link() {
+        let input = "See [NAIS](https://nais.io) for more info";
+        let expected = "See <https://nais.io|NAIS> for more info";
+        assert_eq!(format_slack_post(input), expected);
+    }
+
+    #[test]
+    fn formats_multiple_markdown_links() {
+        let input = "[One](https://one.example) and [Two](https://two.example)";
+        let expected = "<https://one.example|One> and <https://two.example|Two>";
+        assert_eq!(format_slack_post(input), expected);
+    }
+
+    #[test]
+    fn leaves_text_without_links_unchanged() {
+        let input = "No links here, just text.";
+        assert_eq!(format_slack_post(input), input);
+    }
+}

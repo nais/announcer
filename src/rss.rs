@@ -161,3 +161,35 @@ would post Slack message and skip persistence:\n{}",
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::handle_feed;
+    use crate::config::{AppConfig, AppState, Mode};
+
+    const SAMPLE_RSS: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>NAIS Log</title>
+    <item>
+      <title>Test Post</title>
+      <link>https://nais.io/log#test-post</link>
+      <pubDate>Mon, 01 Jan 2024 00:00:00 GMT</pubDate>
+      <encoded><![CDATA[This is **content** with a [link](https://example.com).]]></encoded>
+    </item>
+  </channel>
+</rss>"#;
+
+    #[tokio::test]
+    async fn handle_feed_succeeds_in_dry_run() {
+        let config = AppConfig {
+            mode: Mode::DryRun,
+            redis: None,
+            slack: None,
+        };
+        let state = AppState::new(config);
+
+        let result = handle_feed(SAMPLE_RSS, &state).await;
+        assert!(result.is_ok());
+    }
+}
