@@ -105,7 +105,12 @@ pub async fn handle_feed(xml: &str, app_state: &config::AppState) -> Result<(), 
                                 hash: hashed_post,
                                 timestamp: response.ts,
                             };
-                            let raw = serde_json::to_string(&archive).unwrap();
+                            let raw = serde_json::to_string(&archive).map_err(|e| {
+                                FeedError::SerializeArchive {
+                                    key: key.to_string(),
+                                    error: e.to_string(),
+                                }
+                            })?;
                             match store.set(&key, &raw).await {
                                 Ok(()) => {
                                     info!(post_key = %key, "Posted to Slack, and saved to Redis")

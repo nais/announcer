@@ -1,5 +1,6 @@
 use color_eyre::eyre::{eyre, Context, Result};
 use reqwest::Client;
+use std::time::Duration;
 
 #[derive(Debug, Clone)]
 pub struct ValkeyConfig {
@@ -81,9 +82,14 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(config: AppConfig) -> Self {
+        let http_client = Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()
+            .expect("Failed to build HTTP client");
+
         Self {
             config,
-            http_client: Client::new(),
+            http_client,
         }
     }
 }

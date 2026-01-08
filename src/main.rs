@@ -87,7 +87,8 @@ async fn reconcile(State(state): State<config::AppState>) -> Response {
         mode = %if state.config.is_dry_run() { "DryRun" } else { "Normal" },
         "Time to check the log"
     );
-    match reqwest::get("https://nais.io/log/rss.xml").await {
+    let client = state.http_client.clone();
+    match client.get("https://nais.io/log/rss.xml").send().await {
         Ok(resp) => {
             if !resp.status().is_success() {
                 error!("Got a response, but no XML");
