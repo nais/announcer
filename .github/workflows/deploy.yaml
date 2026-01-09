@@ -6,8 +6,19 @@ on:
       - main
 
 jobs:
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@f7ccc83f9ed1e5b9c81d8a67d7ad1a747e22a561
+      - name: Cargo test
+        run: cargo test --locked --all-targets
+
   build_and_deploy:
     name: Build, push and deploy
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read

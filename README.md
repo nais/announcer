@@ -5,7 +5,7 @@ Ved å hashe tittel og innhold vil den også se om det har blitt gjort endringer
 
 ## Lokal utvikling
 
-Den bruker Valkey som database:
+Standardoppsettet for lokal utvikling bruker Valkey som database:
 
 ```shell
 docker run --name valkey -d valkey/valkey
@@ -22,4 +22,24 @@ Kjør opp med `Cargo`:
 
 ```
 cargo run
+```
+
+### Kjøring uten Slack og Redis
+
+Før å teste parsing og kjøring av `/reconcile` lokalt, uten å sette opp Slack eller Redis/Valkey, kan du bruke `DRY_RUN`:
+
+```shell
+DRY_RUN=1 cargo run
+```
+
+I denne modusen:
+
+- sjekkes ikke `SLACK_TOKEN`, `SLACK_CHANNEL_ID` eller Redis-miljøvariabler ved oppstart
+- forsøker appen ikke å koble til Redis
+- postes det ikke til Slack – det logges bare hva som ville skjedd
+
+Du kan trigge en kjøring lokalt med for eksempel:
+
+```shell
+curl -X POST http://localhost:8080/reconcile
 ```

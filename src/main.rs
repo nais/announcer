@@ -1,48 +1,94 @@
 extern crate redis;
 
+mod config;
+mod redis_client;
 mod rss;
 mod slack;
 
 use axum::{
-    Router, http,
+    Router,
+    extract::State,
+    http,
     response::{IntoResponse, Response},
     routing::{get, post},
 };
 use color_eyre::eyre;
-use log::{error, info};
-use structured_logger::{Builder, async_json::new_writer};
+use rss::FeedError;
+use tracing::{error, info, instrument};
+use tracing_subscriber::{EnvFilter, fmt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
-    Builder::with_level("info")
-        .with_target_writer("*", new_writer(tokio::io::stdout()))
+    let app_config = config::AppConfig::from_env()?;
+
+    fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .json()
+        .finish()
         .init();
+
+    let state = config::AppState::new(app_config);
 
     info!("Good morning, Nais!");
 
-    std::env::var("SLACK_TOKEN").expect("Missing SLACK_TOKEN env");
-    std::env::var("SLACK_CHANNEL_ID").expect("Missing SLACK_CHANNEL_ID env");
-
-    if std::env::var("NAIS_CLUSTER_NAME").is_ok() {
-        std::env::var("REDIS_HOST_RSS").expect("Missing REDIS_HOST_RSS env");
-        std::env::var("REDIS_USERNAME_RSS").expect("Missing REDIS_USERNAME_RSS env");
-        std::env::var("REDIS_PASSWORD_RSS").expect("Missing REDIS_PASSWORD_RSS env");
-        std::env::var("REDIS_PORT_RSS").expect("Missing REDIS_PORT_RSS env");
+    if state.config.is_dry_run() {
+        info!("Running in DRY_RUN mode: Slack and Redis are disabled");
     }
 
-    let app = Router::new().route("/reconcile", post(reconcile)).route(
-        "/",
-        get(|| async { "Hello, check out https://nais.io/log/!" }),
-    );
+    let app = Router::new()
+        .route("/reconcile", post(reconcile))
+        .route("/internal/health", get(healthz))
+        .route("/internal/ready", get(ready))
+        .route(
+            "/",
+            get(|| async { "Hello, check out https://nais.io/log/!" }),
+        )
+        .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
     axum::serve(listener, app).await.map_err(eyre::Error::msg)
 }
 
+async fn healthz() -> &'static str {
+    "ok"
+}
+
+async fn ready(State(state): State<config::AppState>) -> impl IntoResponse {
+    if state.config.is_dry_run() {
+        return (http::StatusCode::OK, "ok");
+    }
+
+    match state.config.valkey_config() {
+        Some(redis_cfg) => {
+            if crate::redis_client::ValkeyStore::connect(redis_cfg).is_some() {
+                (http::StatusCode::OK, "ok")
+            } else {
+                error!("Readiness check: unable to connect to Valkey");
+                (
+                    http::StatusCode::SERVICE_UNAVAILABLE,
+                    "Valkey not available",
+                )
+            }
+        }
+        None => {
+            error!("Readiness check: no Valkey configuration in Normal mode");
+            (
+                http::StatusCode::SERVICE_UNAVAILABLE,
+                "Valkey not configured",
+            )
+        }
+    }
+}
+
 #[axum::debug_handler]
-async fn reconcile() -> Response {
-    info!("Time to check the log");
-    match reqwest::get("https://nais.io/log/rss.xml").await {
+#[instrument(skip(state))]
+async fn reconcile(State(state): State<config::AppState>) -> Response {
+    info!(
+        mode = %if state.config.is_dry_run() { "DryRun" } else { "Normal" },
+        "Time to check the log"
+    );
+    let client = state.http_client.clone();
+    match client.get("https://nais.io/log/rss.xml").send().await {
         Ok(resp) => {
             if !resp.status().is_success() {
                 error!("Got a response, but no XML");
@@ -66,7 +112,34 @@ async fn reconcile() -> Response {
                         .into_response();
                 }
             };
-            rss::handle_feed(&body).await;
+            if let Err(e) = rss::handle_feed(&body, &state).await {
+                match e {
+                    FeedError::RssParse(err) => {
+                        error!("Failed to parse RSS feed: {err}");
+                        return (
+                            http::StatusCode::INTERNAL_SERVER_ERROR,
+                            "Failed to parse RSS feed",
+                        )
+                            .into_response();
+                    }
+                    FeedError::InvalidArchive { key, error } => {
+                        error!("Invalid archive JSON for key {key}: {error}");
+                        return (
+                            http::StatusCode::INTERNAL_SERVER_ERROR,
+                            "Corrupted archive data in Redis",
+                        )
+                            .into_response();
+                    }
+                    FeedError::SerializeArchive { key, error } => {
+                        error!("Failed to serialize archive for key {key}: {error}");
+                        return (
+                            http::StatusCode::INTERNAL_SERVER_ERROR,
+                            "Failed to persist archive data",
+                        )
+                            .into_response();
+                    }
+                }
+            }
         }
         Err(e) => {
             error!("Failed getting the feed: {e}");
